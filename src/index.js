@@ -29,8 +29,6 @@ import path from "node:path";
 import readline from "node:readline";
 import { applyGlobalProxyFromEnv } from "./net/proxy.js";
 import { buildBotState } from "./state.js";
-import { buildIngestPayload } from "./ingest.js";
-import { startWsServer, broadcastState } from "./visualizer/wsServer.js";
 
 function countVwapCrosses(closes, vwapSeries, lookback) {
   if (closes.length < lookback || vwapSeries.length < lookback) return null;
@@ -402,10 +400,6 @@ async function fetchPolymarketSnapshot() {
 }
 
 async function main() {
-  if (CONFIG.visualizer?.enable) {
-    startWsServer(CONFIG.visualizer.wsPort);
-  }
-
   const binanceStream = startBinanceTradeStream({ symbol: CONFIG.symbol });
   const polymarketLiveStream = startPolymarketChainlinkPriceStream({});
   const chainlinkStream = startChainlinkPriceStream({});
@@ -782,22 +776,13 @@ async function main() {
         robustEdge
       });
 
-      if (CONFIG.visualizer?.enable) {
-        broadcastState(botState);
-      }
-
       const ingestUrl = process.env.INGEST_URL || process.env.TERMINAL_INGEST_URL;
       if (ingestUrl) {
         try {
-          const payload = buildIngestPayload({
-            state: botState,
-            spread: spread ?? null,
-            sparklineData: closes.length >= 15 ? closes.slice(-15) : null
-          });
           const res = await fetch(ingestUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
+            body: JSON.stringify(botState)
           });
           if (!res.ok) {
             console.error(`[ingest] POST failed: ${res.status}`);

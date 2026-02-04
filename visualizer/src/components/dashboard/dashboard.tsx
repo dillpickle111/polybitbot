@@ -138,7 +138,7 @@ function EdgeQualityCard({ state, accentClass }: { state: BotState; accentClass:
 }
 
 export function Dashboard() {
-  const { state, connected, error } = useBotState();
+  const { state, connected, stale, error } = useBotState();
   const { settings, update, toggleModule } = useSettings();
   const [commandOpen, setCommandOpen] = useState(false);
   const accent = ACCENT;
@@ -184,9 +184,9 @@ export function Dashboard() {
           <span className="flex items-center gap-1 text-muted-foreground"><Clock className="h-4 w-4" /><span className="font-mono tabular-nums">{fmtTimeSec(market?.timeLeftSec)}</span></span>
         </div>
         <div className="flex items-center gap-4">
-          <Badge variant={connected ? "success" : error ? "danger" : "secondary"} className="gap-1.5">
-            <span className={cn("h-1.5 w-1.5 rounded-full", connected ? "bg-primary animate-pulse" : "bg-muted-foreground")} />
-            {connected ? "Live" : error ?? "Offline"}
+          <Badge variant={connected && !stale ? "success" : stale ? "warning" : error ? "danger" : "secondary"} className="gap-1.5">
+            <span className={cn("h-1.5 w-1.5 rounded-full", connected && !stale ? "bg-primary animate-pulse" : "bg-muted-foreground")} />
+            {connected && !stale ? "Live" : stale ? "STALE" : error ?? "Offline"}
           </Badge>
           <span className="font-mono tabular-nums text-muted-foreground text-xs">{state.timestamp ? new Date(state.timestamp).toLocaleTimeString() : "—"}</span>
           <Sheet>

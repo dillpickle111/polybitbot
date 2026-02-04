@@ -1,42 +1,89 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { BotState, VizMessage } from "@/types/botState";
+import { useEffect, useState, useCallback, useRef } from "react";
+import type { BotState } from "@/types/botState";
 
-const WS_PORT =
-  typeof process !== "undefined" && process.env.NEXT_PUBLIC_VIS_WS_PORT
-    ? Number(process.env.NEXT_PUBLIC_VIS_WS_PORT)
-    : 3334;
+const STALE_THRESHOLD_MS = 10_000;
+const POLL_FRESH_MS = 1000;
+const POLL_STALE_MS = 3000;
+const POLL_ERROR_MS = 5000;
 
-export function useBotState() {
+function getStateUrl(): string {
+  if (typeof window === "undefined") return "/api/state";
+  return "/api/state";
+}
+
+function isFresh(updatedAt: number | null | undefined): boolean {
+  if (updatedAt == null) return false;
+  return Date.now() - updatedAt <= STALE_THRESHOLD_MS;
+}
+
+type PollStatus = "fresh" | "stale" | "error";
+
+export function useBotState(opts?: { enabled?: boolean }) {
+  const enabled = opts?.enabled ?? true;
   const [state, setState] = useState<BotState | null>(null);
   const [connected, setConnected] = useState(false);
+  const [stale, setStale] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cancelledRef = useRef(false);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const url = `ws://localhost:${WS_PORT}`;
-    const ws = new WebSocket(url);
-
-    ws.onopen = () => {
-      setConnected(true);
-      setError(null);
-    };
-
-    ws.onmessage = (event) => {
-      try {
-        const msg = JSON.parse(event.data as string) as VizMessage;
-        if (msg.type === "state" && msg.state) setState(msg.state);
-      } catch {
-        // ignore
+  const fetchState = useCallback(async (): Promise<PollStatus> => {
+    try {
+      const res = await fetch(getStateUrl());
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (data && typeof data === "object" && (data.timestamp != null || data.ts != null || data.market != null)) {
+        const s = data as BotState;
+        if (s.timestamp == null && (data as { ts?: string }).ts) {
+          (s as { timestamp?: string }).timestamp = (data as { ts: string }).ts;
+        }
+        setState(s);
+        setConnected(true);
+        setError(null);
+        const fresh = isFresh(s.updatedAt);
+        setStale(!fresh);
+        return fresh ? "fresh" : "stale";
       }
-    };
-
-    ws.onclose = () => setConnected(false);
-    ws.onerror = () => setError("WebSocket error");
-
-    return () => ws.close();
+      setConnected(false);
+      setStale(true);
+      return "stale";
+    } catch (e) {
+      setConnected(false);
+      setStale(true);
+      setError(String((e as Error)?.message ?? e));
+      return "error";
+    }
   }, []);
 
-  return { state, connected, error };
+  useEffect(() => {
+    if (typeof window === "undefined" || !enabled) return;
+    cancelledRef.current = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const schedule = (delay: number) => {
+      if (cancelledRef.current) return;
+      timeoutId = setTimeout(async () => {
+        if (cancelledRef.current) return;
+        const status = await fetchState();
+        if (cancelledRef.current) return;
+        const nextDelay =
+          status === "error" ? POLL_ERROR_MS : status === "stale" ? POLL_STALE_MS : POLL_FRESH_MS;
+        schedule(nextDelay);
+      }, delay);
+    };
+    const run = async () => {
+      const status = await fetchState();
+      if (cancelledRef.current) return;
+      const nextDelay =
+        status === "error" ? POLL_ERROR_MS : status === "stale" ? POLL_STALE_MS : POLL_FRESH_MS;
+      schedule(nextDelay);
+    };
+    run();
+    return () => {
+      cancelledRef.current = true;
+      if (timeoutId != null) clearTimeout(timeoutId);
+    };
+  }, [fetchState, enabled]);
+
+  return { state, connected, stale, error, refetch: fetchState };
 }

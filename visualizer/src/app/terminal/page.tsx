@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback, useRef } from "react";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useBotState } from "@/hooks/useBotState";
 
-type ConnectionStatus = "LIVE" | "RECONNECTING" | "OFFLINE";
+type ConnectionStatus = "LIVE" | "STALE" | "OFFLINE";
 
 interface TerminalState {
   ts: string | null;
@@ -74,6 +75,62 @@ const defaultState: TerminalState = {
   sparkline: null,
 };
 
+/** Map API response (BotState or ingest payload) to TerminalState */
+function mapToTerminalState(raw: unknown): TerminalState | null {
+  if (!raw || typeof raw !== "object") return null;
+  const s = raw as Record<string, unknown>;
+  const ts = (s.timestamp as string) ?? (s.ts as string) ?? null;
+  if (!ts && !s.market && !s.prices) return null;
+  const market = s.market as Record<string, unknown> | undefined;
+  const prices = s.prices as Record<string, unknown> | undefined;
+  const strike = s.strike as Record<string, unknown> | undefined;
+  const ta = s.ta as Record<string, unknown> | undefined;
+  const indicators = s.indicators as Record<string, unknown> | undefined;
+  const binance = s.binance as Record<string, unknown> | undefined;
+  return {
+    ts,
+    market: {
+      slug: (market?.slug as string) ?? null,
+      title: (market?.title as string) ?? null,
+      timeLeftSec: (market?.timeLeftSec as number) ?? null,
+      spread: (market?.spread as number) ?? (prices?.spread as number) ?? null,
+    },
+    prices: {
+      up: (prices?.up as number) ?? null,
+      down: (prices?.down as number) ?? null,
+    },
+    liquidity: (prices?.liquidity as number) ?? (s.liquidity as number) ?? null,
+    chainlinkPrice: (strike?.currentPrice as number) ?? (s.chainlinkPrice as number) ?? null,
+    binancePrice: (binance?.spot as number) ?? (s.binancePrice as number) ?? null,
+    binanceDiffUsd: (binance?.spotDiffUsd as number) ?? (s.binanceDiffUsd as number) ?? null,
+    binanceDiffPct: (binance?.spotDiffPct as number) ?? (s.binanceDiffPct as number) ?? null,
+    strike: strike
+      ? {
+          priceToBeat: (strike.priceToBeat as number) ?? null,
+          currentPrice: (strike.currentPrice as number) ?? null,
+          diff: (strike.diff as number) ?? null,
+        }
+      : defaultState.strike,
+    indicators: {
+      rsi: ((ta?.rsi ?? indicators?.rsi) ?? null) as number | null,
+      rsiSlope: ((ta?.rsiSlope ?? indicators?.rsiSlope) ?? null) as number | null,
+      macd: ((ta?.macd ?? indicators?.macd) ?? defaultState.indicators.macd) as { bias: string | null; label: string | null },
+      heikenAshi: ((ta?.heikenAshi ?? indicators?.heikenAshi) ?? defaultState.indicators.heikenAshi) as { color: string | null; count: number | null },
+      vwap: ((ta?.vwap ?? indicators?.vwap) ?? null) as number | null,
+      vwapDistPct: ((ta?.vwapDistPct ?? indicators?.vwapDistPct) ?? null) as number | null,
+      vwapSlope: ((ta?.vwapSlope ?? indicators?.vwapSlope) ?? null) as string | null,
+      delta1m: ((ta?.delta1m ?? indicators?.delta1m) ?? null) as number | null,
+      delta3m: ((ta?.delta3m ?? indicators?.delta3m) ?? null) as number | null,
+    },
+    recommendation: ((s.betAdvantage ?? s.recommendation) ?? defaultState.recommendation) as TerminalState["recommendation"],
+    predict: (s.predict as TerminalState["predict"]) ?? defaultState.predict,
+    regime: (s.regime as string) ?? null,
+    session: (s.session as string) ?? null,
+    etTime: (s.etTime as string) ?? null,
+    sparkline: Array.isArray(s.sparkline) ? s.sparkline : null,
+  };
+}
+
 function fmt(v: number | null | undefined, d = 0): string {
   if (v == null || !Number.isFinite(v)) return "—";
   return v.toLocaleString("en-US", { minimumFractionDigits: d, maximumFractionDigits: d });
@@ -111,100 +168,24 @@ function Kv({ k, v, vClass }: { k: React.ReactNode; v: string; vClass?: string }
 }
 
 export default function TerminalPage() {
-  const [state, setState] = useState<TerminalState>(defaultState);
-  const [status, setStatus] = useState<ConnectionStatus>("OFFLINE");
   const [paused, setPaused] = useState(false);
+  const { state: botState, connected, stale, refetch } = useBotState({ enabled: !paused });
+  const state = botState ? mapToTerminalState(botState) ?? defaultState : defaultState;
+  const status: ConnectionStatus = connected && !stale ? "LIVE" : connected && stale ? "STALE" : "OFFLINE";
   const [theme, setTheme] = useState<"green" | "cyan">("green");
   const [helpOpen, setHelpOpen] = useState(false);
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastMessageRef = useRef<TerminalState | null>(null);
-  const pausedRef = useRef(paused);
-  pausedRef.current = paused;
-
-  const connect = useCallback(() => {
-    if (wsRef.current?.readyState === 1) return;
-    const proto = typeof window !== "undefined" && window.location.protocol === "https:" ? "wss:" : "ws:";
-    const url = `${proto}//${typeof window !== "undefined" ? window.location.host : "localhost:3333"}/ws`;
-    setStatus("RECONNECTING");
-    const ws = new WebSocket(url);
-    wsRef.current = ws;
-    ws.onopen = () => setStatus("LIVE");
-    ws.onclose = () => {
-      setStatus("OFFLINE");
-      reconnectTimeoutRef.current = setTimeout(connect, 2000);
-    };
-    ws.onerror = () => setStatus("RECONNECTING");
-    ws.onmessage = (e) => {
-      if (pausedRef.current) return;
-      try {
-        const msg = JSON.parse(e.data as string);
-        if (msg.type === "state" && msg.state) {
-          const s = msg.state;
-          const mapped: TerminalState = {
-            ts: s.ts ?? null,
-            market: {
-              slug: s.market?.slug ?? null,
-              title: s.market?.title ?? null,
-              timeLeftSec: s.market?.timeLeftSec ?? null,
-              spread: s.market?.spread ?? null,
-            },
-            prices: { up: s.prices?.up ?? null, down: s.prices?.down ?? null },
-            liquidity: s.liquidity ?? null,
-            chainlinkPrice: s.chainlinkPrice ?? null,
-            binancePrice: s.binancePrice ?? null,
-            binanceDiffUsd: s.binanceDiffUsd ?? null,
-            binanceDiffPct: s.binanceDiffPct ?? null,
-            strike: s.strike ?? { priceToBeat: null, currentPrice: null, diff: null },
-            indicators: {
-              rsi: s.indicators?.rsi ?? null,
-              rsiSlope: s.indicators?.rsiSlope ?? null,
-              macd: s.indicators?.macd ?? { bias: null, label: null },
-              heikenAshi: s.indicators?.heikenAshi ?? { color: null, count: null },
-              vwap: s.indicators?.vwap ?? null,
-              vwapDistPct: s.indicators?.vwapDistPct ?? null,
-              vwapSlope: s.indicators?.vwapSlope ?? null,
-              delta1m: s.indicators?.delta1m ?? null,
-              delta3m: s.indicators?.delta3m ?? null,
-            },
-            recommendation: s.recommendation ?? defaultState.recommendation,
-            predict: s.predict ?? defaultState.predict,
-            regime: s.regime ?? null,
-            session: s.session ?? null,
-            etTime: s.etTime ?? null,
-            sparkline: Array.isArray(s.sparkline) ? s.sparkline : null,
-          };
-          lastMessageRef.current = mapped;
-          setState(mapped);
-        }
-      } catch {
-        // ignore
-      }
-    };
-  }, []);
-
-  useEffect(() => {
-    connect();
-    return () => {
-      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-      wsRef.current?.close();
-    };
-  }, [connect]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === "g") setTheme((t) => (t === "green" ? "cyan" : "green"));
-      if (e.key === "r") {
-        wsRef.current?.close();
-        connect();
-      }
+      if (e.key === "r") refetch();
       if (e.key === "s") setPaused((p) => !p);
       if (e.key === "?") setHelpOpen((h) => !h);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [connect]);
+  }, [refetch]);
 
   const accent = theme === "green" ? "text-emerald-400" : "text-cyan-400";
   const accentDim = theme === "green" ? "text-emerald-600" : "text-cyan-600";
@@ -235,7 +216,7 @@ export default function TerminalPage() {
             className={cn(
               "text-[10px] font-semibold uppercase",
               status === "LIVE" && accent,
-              status === "RECONNECTING" && "text-amber-500",
+              status === "STALE" && "text-amber-500",
               status === "OFFLINE" && "text-red-500"
             )}
           >

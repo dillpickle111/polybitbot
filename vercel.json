@@ -1,0 +1,6 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "visualizer/.next",
+  "framework": "nextjs",
+  "installCommand": "cd visualizer && npm install"
+}

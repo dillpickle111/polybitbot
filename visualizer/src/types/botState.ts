@@ -1,6 +1,8 @@
 /** Duplicate of bot's BotState shape (same as src/state.js buildBotState output). */
 export interface BotState {
   timestamp: string;
+  /** Epoch ms when state was last received by the API (added at ingest). Used for freshness. */
+  updatedAt?: number;
   market: { slug: string | null; title: string | null; timeLeftSec: number | null };
   prices: { up: number | null; down: number | null; liquidity: number | null; spread?: number | null };
   sparkline?: number[] | null;

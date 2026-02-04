@@ -4,7 +4,9 @@ import { GeistMono } from "geist/font/mono";
 import "./globals.css";
 import { SiteCommandPalette } from "@/components/site-command-palette";
 
-const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3333";
+const baseUrl =
+  process.env.NEXT_PUBLIC_BASE_URL ||
+  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
 export const metadata: Metadata = {
   metadataBase: new URL(baseUrl),

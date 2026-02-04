@@ -9,7 +9,7 @@
     "viz": "cd visualizer && npm run dev",
     "build": "npm run build:visualizer",
     "build:visualizer": "cd visualizer && npm install && npm run build",
-    "dev": "concurrently -n ui,bot -c cyan,green \"cd visualizer && npm run dev\" \"node scripts/run-bot-ingest.js\"",
+    "dev": "concurrently -n ui,bot -c cyan,green \"cd visualizer && npm run dev\" \"INGEST_URL=http://localhost:3000/api/ingest node scripts/run-bot-ingest.js\"",
     "dev:ui": "cd visualizer && npm run dev",
     "dev:bot": "node scripts/run-bot-ingest.js"
   },
