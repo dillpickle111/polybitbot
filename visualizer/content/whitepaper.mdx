@@ -1,0 +1,51 @@
+---
+title: Whitepaper
+description: Polymarket BTC 15m — Methodology and Design
+---
+
+# Polymarket BTC 15m Assistant
+
+## A YC-Style Brief
+
+**Problem:** Polymarket's Bitcoin Up or Down 15-minute markets are noisy. Raw model-vs-market edges often ignore uncertainty, time feasibility, and execution cost. Traders need a conservative, defensible signal—not hype.
+
+**Solution:** A robust edge model that only surfaces WATCH when:
+- Edge survives a 90% one-sided uncertainty discount (p_low = p − 1.28σ)
+- Time feasibility is sufficient (distance to strike vs expected move)
+- Execution cost (fees, slippage, spread) is subtracted
+- ROI and Kelly thresholds are met
+
+**Design principles:**
+- Neutral language: PASS/WATCH, never "trade now"
+- Disclaimer gate before dashboard access
+- No execution; analytics only
+
+## Methodology
+
+### Model Probability (p)
+
+TA-derived probability from RSI, MACD, VWAP slope, Heiken Ashi. Time-aware decay applied as the 15m window closes.
+
+### Market Price (q)
+
+Polymarket implied probability from best bid/ask.
+
+### Uncertainty (σ)
+
+Rolling standard deviation of p over the last 30 updates. Floor: 2%. No backtest calibration by default.
+
+### Robust Edge
+
+```
+p_low     = p − 1.28×σ
+edge_low  = p_low − q
+robust    = edge_low × time_mult − exec_cost
+```
+
+Recommend only if robust > 0, robust_roi ≥ 10%, time_mult ≥ 35%, kelly ≥ 0.25%.
+
+## Limits
+
+- 1–5 second data latency
+- No execution; user trades manually
+- Not financial advice

@@ -1,0 +1,62 @@
+---
+title: Architecture
+description: System architecture and data flow
+---
+
+# Architecture
+
+## High-Level Flow
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   Binance 1m    │     │   Chainlink      │     │   Polymarket    │
+│   Klines + WS   │     │   (Polygon)      │     │   CLOB + WS     │
+└────────┬────────┘     └────────┬─────────┘     └────────┬────────┘
+         │                      │                         │
+         └──────────────────────┼─────────────────────────┘
+                                │
+                                ▼
+                    ┌───────────────────────┐
+                    │   Main Loop (1s poll)  │
+                    │   - TA (RSI, MACD,    │
+                    │     VWAP, Heiken Ashi)│
+                    │   - Regime detection  │
+                    │   - Probability model │
+                    │   - Robust edge       │
+                    └───────────┬───────────┘
+                                │
+                                ▼
+                    ┌───────────────────────┐
+                    │   BotState (JSON)     │
+                    │   broadcast via WS    │
+                    └───────────┬───────────┘
+                                │
+                                ▼
+                    ┌───────────────────────┐
+                    │   Next.js Visualizer  │
+                    │   /app dashboard      │
+                    └───────────────────────┘
+```
+
+## Components
+
+### Bot (Node.js)
+
+- **Data fetchers** — Binance REST, Chainlink RPC/WS, Polymarket CLOB
+- **Indicators** — RSI, MACD, VWAP, Heiken Ashi, realized volatility
+- **Engines** — Regime, probability, edge quality, robust edge
+- **WebSocket server** — Broadcasts `BotState` to connected clients
+
+### Visualizer (Next.js)
+
+- **Dashboard** — `/app` route, consumes WebSocket state
+- **Docs** — Static MDX content
+- **Disclaimer gate** — Must accept before accessing `/app`
+
+## Data Flow
+
+1. Bot polls Binance, Chainlink, Polymarket every second
+2. Computes TA, regime, probability, edge quality, robust edge
+3. Builds `BotState` and broadcasts via WebSocket
+4. Visualizer receives state and renders dashboard
+5. User sees live metrics; no trading execution

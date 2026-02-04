@@ -1,0 +1,26 @@
+---
+title: Risk + Limits
+description: Risk disclaimers and system limits
+---
+
+# Risk + Limits
+
+## Disclaimers
+
+- **Not financial advice** — This tool is for research and education only
+- **No guarantees** — Past performance does not predict future results
+- **Use at your own risk** — You are responsible for your own decisions
+- **No execution** — The tool does not place trades; it only displays analytics
+
+## System Limits
+
+- **Data latency** — 1–5 second delays; not suitable for high-frequency use
+- **API rate limits** — Binance, Polymarket, and RPC providers may throttle
+- **Geo restrictions** — Binance may be unavailable in some regions
+- **Model uncertainty** — σ is estimated from rolling history; no backtest calibration by default
+
+## Robust Edge Safeguards
+
+- Only surfaces WATCH when robust_edge, robust_roi, time_mult, and kelly thresholds are met
+- Uses conservative p_low (90% one-sided) to discount model overconfidence
+- Time feasibility reduces edge when strike is far and time is short

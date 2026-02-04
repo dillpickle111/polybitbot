@@ -1,0 +1,31 @@
+---
+title: Data Sources
+description: Where data comes from
+---
+
+# Data Sources
+
+## Binance
+
+- **REST** — 1m and 5m klines for TA (RSI, MACD, VWAP, Heiken Ashi)
+- **WebSocket** — Last trade price for real-time spot
+- **Use** — Price discovery, volatility, session VWAP
+
+## Chainlink (Polygon)
+
+- **BTC/USD aggregator** — Settlement price for Polymarket markets
+- **RPC or WebSocket** — Depends on config
+- **Use** — "Price to beat" and current price for strike distance
+
+## Polymarket
+
+- **Gamma API** — Market metadata, live events, tokens
+- **CLOB API** — Order book, best bid/ask, spread
+- **WebSocket** — Live Chainlink price feed (when available)
+- **Use** — UP/DOWN prices, liquidity, spread for edge and exec cost
+
+## Data Freshness
+
+- Binance: ~1s
+- Chainlink: ~1–5s
+- Polymarket: ~1s (order book), WS for price when connected

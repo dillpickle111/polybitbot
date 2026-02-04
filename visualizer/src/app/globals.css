@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 4%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 4%;
+    --card-foreground: 0 0% 98%;
+    --muted: 0 0% 14%;
+    --muted-foreground: 0 0% 55%;
+    --border: 0 0% 14%;
+    --radius: 4px;
+    --popover: 0 0% 6%;
+    --popover-foreground: 0 0% 98%;
+    --accent: 0 0% 14%;
+    --accent-foreground: 0 0% 98%;
+    --primary: 220 70% 50%;
+    --primary-foreground: 0 0% 98%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 98%;
+    --ring: 220 70% 50%;
+    --input: 0 0% 14%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+}
+
+@keyframes ticker {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+.animate-ticker {
+  animation: ticker 20s linear infinite;
+}
+
+.terminal-page {
+  --terminal-fg: #c0c0c0;
+  --terminal-muted: #606060;
+  --terminal-border: #333;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}

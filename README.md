@@ -1,8 +1,36 @@
 # Polymarket BTC 15m Assistant
 
-A real-time console trading assistant for Polymarket **"Bitcoin Up or Down" 15-minute** markets.
+A real-time analytics assistant for Polymarket **"Bitcoin Up or Down" 15-minute** markets. Public-facing product site with docs, whitepaper, and live dashboard.
 
-It combines:
+## Site Overview
+
+| Route | Description |
+|-------|-------------|
+| `/` | Marketing landing page |
+| `/app` | Live dashboard (behind disclaimer gate) |
+| `/docs` | Documentation index |
+| `/docs/*` | MDX docs (Overview, Architecture, Data Sources, Edge Math, Risk + Limits, Local Development, Deployment) |
+| `/whitepaper` | MDX whitepaper |
+| `/changelog` | Release feed |
+| `/about` | About page |
+
+**View on GitHub:** [https://github.com/FrondEnt/PolymarketBTC15mAssistant](https://github.com/FrondEnt/PolymarketBTC15mAssistant)
+
+## Quick Start
+
+```bash
+# Install
+npm install
+cd visualizer && npm install
+
+# Run (bot + UI)
+npm run dev
+```
+
+Open **http://localhost:3333** — landing at `/`, dashboard at `/app`, docs at `/docs`.
+
+## What It Combines
+
 - Polymarket market selection + UP/DOWN prices + liquidity
 - Polymarket live WS **Chainlink BTC/USD CURRENT PRICE** (same feed shown on the Polymarket UI)
 - Fallback to on-chain Chainlink (Polygon) via HTTP/WSS RPC
@@ -172,9 +200,121 @@ Example:
 
 ## Run
 
+### Terminal only (bot)
+
 ```bash
 npm start
+# or
+npm run bot
 ```
+
+The bot runs the Polymarket/BTC logic and prints the dashboard in the terminal every second.
+
+### Web visualizer (Next.js + shadcn)
+
+The visualizer is a **separate Next.js app** that shows live bot state in the browser. It does **not** parse terminal output; the bot broadcasts structured JSON over WebSocket.
+
+**Two terminals:**
+
+1. **Terminal 1 – bot (WebSocket on 3334):**
+   ```bash
+   npm run bot
+   ```
+   You should see: `[viz] WS server on ws://localhost:3334`
+
+2. **Terminal 2 – UI (HTTP on 3333):**
+   ```bash
+   npm run viz
+   ```
+   First time: `cd visualizer && npm install` then `npm run dev`.
+
+3. **Browser:** open **http://localhost:3333**
+
+The UI connects to `ws://localhost:3334` and updates live. If the bot is not running, the UI loads but shows “Waiting for bot…”.
+
+**Env vars:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VISUALIZER_ENABLE` | `true` | Set to `false` to run bot without starting the WS server (terminal-only). |
+| `VIS_WS_PORT` | `3334` | Port the bot’s WebSocket server binds to. |
+| `NEXT_PUBLIC_VIS_WS_PORT` | `3334` | Port the Next.js app uses to connect to the bot (set in visualizer if different). |
+
+**Terminal-only mode (no WebSocket):**
+
+```bash
+VISUALIZER_ENABLE=false npm run bot
+```
+
+The bot runs as before; no WS server is started. The UI at http://localhost:3333 can still be opened but will show disconnected.
+
+**Root cause of “localhost invalid response”:** Previously the bot served the dashboard on 3333; path/timing issues caused 404 or invalid HTTP. This is fixed by serving the UI from Next.js on 3333 and the bot only exposing WebSocket on 3334. See `docs/ROOT_CAUSE_AND_FIX.md`.
+
+**Step-by-step:** See `docs/HOW_TO_USE.md` for setup, two-terminal run, and troubleshooting.
+
+**Customization & hotkeys (dashboard at /app):**
+
+The visualizer uses a modern YC-style layout with a Settings drawer. Options are saved in `localStorage`.
+
+| Hotkey | Action |
+|--------|--------|
+| `⌘K` / `Ctrl+K` | Open command palette — jump to modules, toggle visibility |
+
+**Settings (gear icon, stored in localStorage):**
+- **Density:** Comfortable / Compact — padding and spacing
+- **Accent color:** green / cyan / purple — highlight color
+- **Module visibility:** show/hide Setup Quality, Market Prices, BTC Price, Conditions, TA Snapshot, Microstructure, Sources
+
+**SETUP QUALITY:** 0–100 score (Poor/Fair/Good/Great) with one-line rationale. "View details" expands the breakdown (liquidity/cost, volatility regime, trend vs chop, signal agreement).
+
+### Bloomberg terminal UI (one command)
+
+A **Bloomberg-style terminal** is available at `/terminal` with a dark, dense, keyboard-first layout.
+
+**One command (runs bot + UI together):**
+
+```bash
+npm run dev
+```
+
+This starts:
+1. **UI** on http://localhost:3333 (Next.js + WebSocket + ingest API)
+2. **Bot** with `INGEST_URL` set, POSTing snapshots to `/api/ingest` every tick
+
+**Browser:** open **http://localhost:3333/terminal**
+
+**Or run separately (two terminals):**
+
+1. **Terminal 1 – UI:**
+   ```bash
+   npm run dev:ui
+   ```
+   (or `cd visualizer && npm run dev`)
+
+2. **Terminal 2 – Bot with ingest:**
+   ```bash
+   INGEST_URL=http://localhost:3333/api/ingest npm run bot
+   ```
+   On Windows CMD: `set INGEST_URL=http://localhost:3333/api/ingest && npm run bot`
+
+   On Windows PowerShell: `$env:INGEST_URL="http://localhost:3333/api/ingest"; npm run bot`
+
+3. **Browser:** http://localhost:3333/terminal
+
+**Terminal keyboard shortcuts:**
+- `g` – Toggle green/cyan theme
+- `r` – Reconnect stream
+- `s` – Pause/resume updates
+- `?` – Show help modal
+
+**Smoke test (exact steps):**
+1. `npm install` (from project root)
+2. `cd visualizer && npm install` (first time only)
+3. `npm run dev` (from project root)
+4. Wait ~5–10 seconds for the bot to fetch data and POST to ingest
+5. Open http://localhost:3333/terminal in a browser
+6. Verify: connection status shows **LIVE** (green), BTC price and market panels populate
+7. Press `?` to open help modal, `g` to toggle green/cyan theme, `s` to pause updates
 
 ### Stop
 
@@ -196,8 +336,23 @@ npm start
 - If the console looks like it “spams” lines:
   - The renderer uses `readline.cursorTo` + `clearScreenDown` for a stable, static screen, but some terminals may still behave differently.
 
+## Build
+
+```bash
+npm run build          # From project root (builds visualizer)
+cd visualizer && npm run build  # Visualizer only
+```
+
+Both should complete without errors. The visualizer is a Next.js app with marketing landing (`/`), docs (`/docs`), whitepaper (`/whitepaper`), changelog (`/changelog`), about (`/about`), and the live dashboard (`/app`). Use `⌘K` (or `Ctrl+K`) for the command palette.
+
+**OG image:** Add `visualizer/public/og.png` (1200×630) for social sharing previews. Metadata references `/og.png`.
+
+## View on GitHub
+
+[https://github.com/FrondEnt/PolymarketBTC15mAssistant](https://github.com/FrondEnt/PolymarketBTC15mAssistant)
+
 ## Safety
 
-This is not financial advice. Use at your own risk.
+This is not financial advice. Use at your own risk. The dashboard uses PASS/WATCH language; no "trade now" or buy recommendations.
 
 created by @krajekis

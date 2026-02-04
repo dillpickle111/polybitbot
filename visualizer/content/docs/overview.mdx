@@ -1,0 +1,25 @@
+---
+title: Overview
+description: Introduction to Polymarket BTC 15m Assistant
+---
+
+# Overview
+
+Polymarket BTC 15m Assistant is an analytics tool for Polymarket's Bitcoin Up or Down 15-minute prediction markets. It combines technical analysis, market microstructure, and a robust edge model to surface probabilistic insights—not trading advice.
+
+## What It Does
+
+- **Live dashboard** — Real-time view of model probabilities, market prices, and edge quality
+- **Robust edge scoring** — Only flags opportunities when edge survives uncertainty, time feasibility, and execution cost adjustments
+- **Neutral framing** — Uses PASS/WATCH language; no "trade now" or buy recommendations
+
+## Key Concepts
+
+- **Model probability (p)** — TA-derived probability of UP or DOWN
+- **Market price (q)** — Polymarket implied probability
+- **Robust edge** — edge_low × time_mult − exec_cost, only when criteria are met
+- **Time feasibility** — Distance to strike vs expected move; low time remaining reduces effective edge
+
+## Not Financial Advice
+
+This tool is for research and education. Past performance does not guarantee future results. Use at your own risk.

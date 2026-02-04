@@ -18,13 +18,19 @@ import { computeMacd } from "./indicators/macd.js";
 import { computeHeikenAshi, countConsecutive } from "./indicators/heikenAshi.js";
 import { detectRegime } from "./engines/regime.js";
 import { scoreDirection, applyTimeAwareness } from "./engines/probability.js";
-import { computeEdge, decide } from "./engines/edge.js";
+import { computeEdge } from "./engines/edge.js";
+import { computeEdgeQuality } from "./engines/edgeQuality.js";
+import { computeRobustEdge } from "./engines/robustEdge.js";
+import { computeRealizedVol } from "./indicators/volatility.js";
 import { appendCsvRow, formatNumber, formatPct, getCandleWindowTiming, sleep } from "./utils.js";
 import { startBinanceTradeStream } from "./data/binanceWs.js";
 import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 import { applyGlobalProxyFromEnv } from "./net/proxy.js";
+import { buildBotState } from "./state.js";
+import { buildIngestPayload } from "./ingest.js";
+import { startWsServer, broadcastState } from "./visualizer/wsServer.js";
 
 function countVwapCrosses(closes, vwapSeries, lookback) {
   if (closes.length < lookback || vwapSeries.length < lookback) return null;
@@ -396,6 +402,10 @@ async function fetchPolymarketSnapshot() {
 }
 
 async function main() {
+  if (CONFIG.visualizer?.enable) {
+    startWsServer(CONFIG.visualizer.wsPort);
+  }
+
   const binanceStream = startBinanceTradeStream({ symbol: CONFIG.symbol });
   const polymarketLiveStream = startPolymarketChainlinkPriceStream({});
   const chainlinkStream = startChainlinkPriceStream({});
@@ -512,8 +522,6 @@ async function main() {
       const marketDown = poly.ok ? poly.prices.down : null;
       const edge = computeEdge({ modelUp: timeAware.adjustedUp, modelDown: timeAware.adjustedDown, marketYes: marketUp, marketNo: marketDown });
 
-      const rec = decide({ remainingMinutes: timeLeftMin, edgeUp: edge.edgeUp, edgeDown: edge.edgeDown, modelUp: timeAware.adjustedUp, modelDown: timeAware.adjustedDown });
-
       const vwapSlopeLabel = vwapSlope === null ? "-" : vwapSlope > 0 ? "UP" : vwapSlope < 0 ? "DOWN" : "FLAT";
 
       const macdLabel = macd === null
@@ -563,12 +571,6 @@ async function main() {
       const vwapValue = `${formatNumber(vwapNow, 0)} (${formatPct(vwapDist, 2)}) | slope: ${vwapSlopeLabel}`;
       const vwapLine = formatNarrativeValue("VWAP", vwapValue, vwapNarrative);
 
-      const signal = rec.action === "ENTER" ? (rec.side === "UP" ? "BUY UP" : "BUY DOWN") : "NO TRADE";
-
-      const actionLine = rec.action === "ENTER"
-        ? `${rec.action} NOW (${rec.phase} ENTRY)`
-        : `NO TRADE (${rec.phase})`;
-
       const spreadUp = poly.ok ? poly.orderbook.up.spread : null;
       const spreadDown = poly.ok ? poly.orderbook.down.spread : null;
 
@@ -595,6 +597,48 @@ async function main() {
       }
 
       const priceToBeat = priceToBeatState.slug === marketSlug ? priceToBeatState.value : null;
+
+      const vol1m = computeRealizedVol(closes, 20);
+      const baseInterval = CONFIG.candleWindowMinutes;
+      const realizedVol = vol1m != null ? vol1m * Math.sqrt(baseInterval) : null;
+      const edgeQuality = computeEdgeQuality({
+        price: currentPrice ?? lastPrice,
+        priceToBeat: priceToBeat ?? (currentPrice ?? lastPrice),
+        timeLeftMin,
+        realizedVol,
+        rawEdgeUp: edge.edgeUp,
+        rawEdgeDown: edge.edgeDown,
+        baseIntervalMin: baseInterval
+      });
+
+      const robustEdge = computeRobustEdge({
+        modelUp: timeAware.adjustedUp,
+        modelDown: timeAware.adjustedDown,
+        marketUp: edge.marketUp,
+        marketDown: edge.marketDown,
+        timeMult: edgeQuality.timeMultiplier,
+        spread: spread ?? 0.02,
+        config: CONFIG.robustEdge
+      });
+
+      const phase = timeLeftMin > 10 ? "EARLY" : timeLeftMin > 5 ? "MID" : "LATE";
+      const bestRobust = robustEdge.side === "UP" ? robustEdge.robustEdgeUp : robustEdge.robustEdgeDown;
+      const rec = {
+        action: robustEdge.decision === "BUY" ? "ENTER" : "NO_TRADE",
+        side: robustEdge.side,
+        phase,
+        strength: robustEdge.decision === "BUY" ? ((bestRobust ?? 0) >= 0.1 ? "STRONG" : "GOOD") : null,
+        interpretation: robustEdge.interpretation
+      };
+
+      const signal = rec.action === "ENTER" ? (rec.side === "UP" ? "BUY UP" : "BUY DOWN") : "NO TRADE";
+      const actionLine = rec.action === "ENTER"
+        ? `${rec.action} (${rec.phase})`
+        : `NO TRADE (${rec.phase})`;
+      const interpretationText = rec.interpretation ?? "No bet.";
+      const betAdvantageColor = rec.action === "ENTER" ? ANSI.green : ANSI.yellow;
+      const betAdvantageLine = `${betAdvantageColor}ROBUST EDGE:${ANSI.reset} ${interpretationText}`;
+
       const currentPriceBaseLine = colorPriceLine({
         label: "CURRENT PRICE",
         price: currentPrice,
@@ -683,6 +727,11 @@ async function main() {
         "",
         sepLine(),
         "",
+        section("ROBUST EDGE (recommendation only when edge survives adjustments)"),
+        betAdvantageLine,
+        "",
+        sepLine(),
+        "",
         kv("POLYMARKET:", polyHeaderValue),
         liquidity !== null ? kv("Liquidity:", formatNumber(liquidity, 0)) : null,
         settlementLeftMin !== null ? kv("Time left:", `${polyTimeLeftColor}${fmtTimeLeft(settlementLeftMin)}${ANSI.reset}`) : null,
@@ -700,6 +749,63 @@ async function main() {
         sepLine(),
         centerText(`${ANSI.dim}${ANSI.gray}created by @krajekis${ANSI.reset}`, screenWidth())
       ].filter((x) => x !== null);
+
+      const botState = buildBotState({
+        timeLeftMin,
+        poly,
+        regimeInfo,
+        pLong,
+        pShort,
+        consec,
+        rsiNow,
+        rsiSlope,
+        macdLabel,
+        macd,
+        delta1m,
+        delta3m,
+        vwapNow,
+        vwapDist,
+        vwapSlopeLabel,
+        rec,
+        marketUp,
+        marketDown,
+        liquidity,
+        spread,
+        sparklineData: closes.length >= 15 ? closes.slice(-15) : null,
+        priceToBeat,
+        currentPrice,
+        ptbDelta,
+        spotPrice,
+        getBtcSession,
+        fmtEtTime,
+        edgeQuality,
+        robustEdge
+      });
+
+      if (CONFIG.visualizer?.enable) {
+        broadcastState(botState);
+      }
+
+      const ingestUrl = process.env.INGEST_URL || process.env.TERMINAL_INGEST_URL;
+      if (ingestUrl) {
+        try {
+          const payload = buildIngestPayload({
+            state: botState,
+            spread: spread ?? null,
+            sparklineData: closes.length >= 15 ? closes.slice(-15) : null
+          });
+          const res = await fetch(ingestUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+          if (!res.ok) {
+            console.error(`[ingest] POST failed: ${res.status}`);
+          }
+        } catch (ingestErr) {
+          console.error("[ingest]", ingestErr?.message ?? ingestErr);
+        }
+      }
 
       renderScreen(lines.join("\n") + "\n");
 

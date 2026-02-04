@@ -15,6 +15,14 @@ export const CONFIG = {
   macdSlow: 26,
   macdSignal: 9,
 
+  robustEdge: {
+    minRobustRoi: Number(process.env.ROBUST_MIN_ROI) || 0.1,
+    minTimeMult: Number(process.env.ROBUST_MIN_TIME_MULT) || 0.35,
+    minKellyPctBankroll: Number(process.env.ROBUST_MIN_KELLY_PCT) || 0.0025,
+    feePct: Number(process.env.ROBUST_FEE_PCT) || 0.02,
+    slippagePct: Number(process.env.ROBUST_SLIPPAGE_PCT) || 0.005
+  },
+
   polymarket: {
     marketSlug: process.env.POLYMARKET_SLUG || "",
     seriesId: process.env.POLYMARKET_SERIES_ID || "10192",
@@ -23,6 +31,11 @@ export const CONFIG = {
     liveDataWsUrl: process.env.POLYMARKET_LIVE_WS_URL || "wss://ws-live-data.polymarket.com",
     upOutcomeLabel: process.env.POLYMARKET_UP_LABEL || "Up",
     downOutcomeLabel: process.env.POLYMARKET_DOWN_LABEL || "Down"
+  },
+
+  visualizer: {
+    enable: (process.env.VISUALIZER_ENABLE || "true").toLowerCase() === "true",
+    wsPort: Number(process.env.VIS_WS_PORT) || 3334
   },
 
   chainlink: {

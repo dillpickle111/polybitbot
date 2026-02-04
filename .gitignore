@@ -3,6 +3,8 @@ logs/
 .env
 .env.*
 .DS_Store
+.next/
+visualizer/.next/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*

@@ -1,0 +1,52 @@
+---
+title: Edge Math
+description: Robust edge formula and components
+---
+
+# Edge Math
+
+## Definitions
+
+- **q** — Market price (implied probability)
+- **p** — Model probability
+- **σ** — Model uncertainty (rolling std of p over last N updates, floor 2%)
+- **p_low** — p − z×σ (z=1.28 for ~90% one-sided)
+- **edge_low** — p_low − q
+- **time_mult** — From distance_to_strike vs expected_move(time_left)
+- **exec_cost** — Fees + slippage + spread penalty
+
+## Robust Edge Formula
+
+```
+robust_edge = edge_low × time_mult − exec_cost
+robust_roi  = robust_edge / q
+kelly       = (p_low − q) / (1 − q)
+```
+
+## Time Feasibility
+
+```
+expected_move = price × realized_vol × sqrt(time_remaining / base_interval)
+z_score       = distance_to_strike / expected_move
+```
+
+**Multiplier by z-score:**
+
+| z < 0.5 | z < 1 | z < 2 | else |
+|---------|-------|-------|------|
+| 1.0     | 0.7   | 0.35  | 0.1  |
+
+## Recommendation Criteria
+
+Recommend only when:
+
+- `robust_edge > 0`
+- `robust_roi ≥ 0.10` (config)
+- `time_mult ≥ 0.35` (config)
+- `capped_kelly ≥ 0.25%` bankroll (config)
+
+## Execution Cost
+
+- Fee: 2%
+- Slippage: 0.5%
+- Spread penalty: spread × 0.5

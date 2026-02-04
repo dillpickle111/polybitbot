@@ -1,0 +1,45 @@
+---
+title: Deployment
+description: Deploy the visualizer and bot
+---
+
+# Deployment
+
+## Visualizer (Next.js)
+
+```bash
+cd visualizer
+npm run build
+npm run start
+```
+
+Or use a platform like Vercel:
+
+```bash
+vercel
+```
+
+**Note:** The dashboard at `/app` requires the bot's WebSocket. For a public deployment, you need to run the bot separately and expose the WebSocket (e.g., via a tunnel or same host).
+
+## Bot (Node.js)
+
+The bot is a long-running Node process. Options:
+
+- **PM2** — `pm2 start src/index.js --name polymarket-bot`
+- **Docker** — Build a container that runs the bot
+- **Systemd** — Create a service unit
+
+## WebSocket Considerations
+
+- The visualizer expects `ws://localhost:VIS_WS_PORT` by default
+- For production, set `NEXT_PUBLIC_VIS_WS_URL` to the public WebSocket URL
+- Use WSS (TLS) in production
+
+## Build Verification
+
+```bash
+npm run build   # From project root
+cd visualizer && npm run build  # Visualizer only
+```
+
+Both should complete without errors.
