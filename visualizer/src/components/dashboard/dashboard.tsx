@@ -138,7 +138,7 @@ function EdgeQualityCard({ state, accentClass }: { state: BotState; accentClass:
 }
 
 export function Dashboard() {
-  const { state, connected, stale, error } = useBotState();
+  const { state, connected, stale, paused, error } = useBotState();
   const { settings, update, toggleModule } = useSettings();
   const [commandOpen, setCommandOpen] = useState(false);
   const accent = ACCENT;
@@ -154,13 +154,26 @@ export function Dashboard() {
   const runCommand = useCallback((fn: () => void) => { fn(); setCommandOpen(false); }, []);
 
   if (!state) {
+    const statusLabel = paused ? "PAUSED" : "OFFLINE";
+    const statusVariant = paused ? "paused" : "secondary";
     return (
       <main className="min-h-screen bg-background">
         <header className="sticky top-0 z-40 border-b border-border bg-background px-6 py-4">
-          <div className="flex items-center justify-between"><h1 className="text-lg font-semibold">Polymarket BTC 15m</h1><Badge variant="secondary">Offline</Badge></div>
+          <div className="flex items-center justify-between">
+            <h1 className="text-lg font-semibold">Polymarket BTC 15m</h1>
+            <Badge variant={statusVariant}>{statusLabel}</Badge>
+          </div>
         </header>
-        <div className="flex min-h-[60vh] items-center justify-center p-6">
-          <p className="text-center text-muted-foreground">{connected ? "Waiting for bot state…" : "Start the bot (npm run bot) to see live data."}</p>
+        <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4 p-6">
+          <h2 className="text-lg font-medium text-foreground">
+            Data feed offline
+          </h2>
+          <p className="text-center text-muted-foreground max-w-md">
+            Decision engine not running. Analytics will update when the feed resumes.
+          </p>
+          {process.env.NODE_ENV !== "production" && paused && (
+            <p className="text-xs text-muted-foreground">Set BOT_DISABLED=false to resume</p>
+          )}
         </div>
       </main>
     );

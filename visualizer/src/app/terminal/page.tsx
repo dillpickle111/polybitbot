@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { useBotState } from "@/hooks/useBotState";
 
-type ConnectionStatus = "LIVE" | "STALE" | "OFFLINE";
+type ConnectionStatus = "LIVE" | "STALE" | "OFFLINE" | "PAUSED";
 
 interface TerminalState {
   ts: string | null;
@@ -169,9 +169,15 @@ function Kv({ k, v, vClass }: { k: React.ReactNode; v: string; vClass?: string }
 
 export default function TerminalPage() {
   const [paused, setPaused] = useState(false);
-  const { state: botState, connected, stale, refetch } = useBotState({ enabled: !paused });
+  const { state: botState, connected, stale, paused: botPaused, refetch } = useBotState({ enabled: !paused });
   const state = botState ? mapToTerminalState(botState) ?? defaultState : defaultState;
-  const status: ConnectionStatus = connected && !stale ? "LIVE" : connected && stale ? "STALE" : "OFFLINE";
+  const status: ConnectionStatus = botPaused
+    ? "PAUSED"
+    : connected && !stale
+      ? "LIVE"
+      : connected && stale
+        ? "STALE"
+        : "OFFLINE";
   const [theme, setTheme] = useState<"green" | "cyan">("green");
   const [helpOpen, setHelpOpen] = useState(false);
 
@@ -217,7 +223,8 @@ export default function TerminalPage() {
               "text-[10px] font-semibold uppercase",
               status === "LIVE" && accent,
               status === "STALE" && "text-amber-500",
-              status === "OFFLINE" && "text-red-500"
+              status === "OFFLINE" && "text-red-500",
+              status === "PAUSED" && "text-muted-foreground"
             )}
           >
             {status}

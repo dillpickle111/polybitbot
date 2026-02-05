@@ -7,6 +7,7 @@ const STALE_THRESHOLD_MS = 10_000;
 const POLL_FRESH_MS = 1000;
 const POLL_STALE_MS = 3000;
 const POLL_ERROR_MS = 5000;
+const POLL_PAUSED_MS = 5000;
 
 function getStateUrl(): string {
   if (typeof window === "undefined") return "/api/state";
@@ -18,13 +19,14 @@ function isFresh(updatedAt: number | null | undefined): boolean {
   return Date.now() - updatedAt <= STALE_THRESHOLD_MS;
 }
 
-type PollStatus = "fresh" | "stale" | "error";
+type PollStatus = "fresh" | "stale" | "error" | "paused";
 
 export function useBotState(opts?: { enabled?: boolean }) {
   const enabled = opts?.enabled ?? true;
   const [state, setState] = useState<BotState | null>(null);
   const [connected, setConnected] = useState(false);
   const [stale, setStale] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const cancelledRef = useRef(false);
 
@@ -33,6 +35,14 @@ export function useBotState(opts?: { enabled?: boolean }) {
       const res = await fetch(getStateUrl());
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (data && typeof data === "object" && data.status === "paused") {
+        setState(null);
+        setConnected(false);
+        setStale(true);
+        setPaused(true);
+        setError(null);
+        return "paused";
+      }
       if (data && typeof data === "object" && (data.timestamp != null || data.ts != null || data.market != null)) {
         const s = data as BotState;
         if (s.timestamp == null && (data as { ts?: string }).ts) {
@@ -40,17 +50,21 @@ export function useBotState(opts?: { enabled?: boolean }) {
         }
         setState(s);
         setConnected(true);
+        setPaused(false);
         setError(null);
         const fresh = isFresh(s.updatedAt);
         setStale(!fresh);
         return fresh ? "fresh" : "stale";
       }
+      setState(null);
       setConnected(false);
       setStale(true);
+      setPaused(false);
       return "stale";
     } catch (e) {
       setConnected(false);
       setStale(true);
+      setPaused(false);
       setError(String((e as Error)?.message ?? e));
       return "error";
     }
@@ -67,7 +81,13 @@ export function useBotState(opts?: { enabled?: boolean }) {
         const status = await fetchState();
         if (cancelledRef.current) return;
         const nextDelay =
-          status === "error" ? POLL_ERROR_MS : status === "stale" ? POLL_STALE_MS : POLL_FRESH_MS;
+          status === "error"
+            ? POLL_ERROR_MS
+            : status === "paused"
+              ? POLL_PAUSED_MS
+              : status === "stale"
+                ? POLL_STALE_MS
+                : POLL_FRESH_MS;
         schedule(nextDelay);
       }, delay);
     };
@@ -75,7 +95,13 @@ export function useBotState(opts?: { enabled?: boolean }) {
       const status = await fetchState();
       if (cancelledRef.current) return;
       const nextDelay =
-        status === "error" ? POLL_ERROR_MS : status === "stale" ? POLL_STALE_MS : POLL_FRESH_MS;
+        status === "error"
+          ? POLL_ERROR_MS
+          : status === "paused"
+            ? POLL_PAUSED_MS
+            : status === "stale"
+              ? POLL_STALE_MS
+              : POLL_FRESH_MS;
       schedule(nextDelay);
     };
     run();
@@ -85,5 +111,5 @@ export function useBotState(opts?: { enabled?: boolean }) {
     };
   }, [fetchState, enabled]);
 
-  return { state, connected, stale, error, refetch: fetchState };
+  return { state, connected, stale, paused, error, refetch: fetchState };
 }
